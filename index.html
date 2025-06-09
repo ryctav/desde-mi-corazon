@@ -58,6 +58,8 @@
     const qrContainer = document.getElementById("qr-container");
     const qr = new QRious({ element: document.getElementById("qr"), size: 250 });
 
+    const UPLOADTHING_TOKEN = 'eyJhcGlLZXkiOiJza19saXZlX2FmNzMwM2ZiMGI4MzUwYzUwOGU1NGIzZWIzMDRkNmE5YWI2MDZmZjYyYWIzMWYyODUyZDdlZDFjZDk3NzJjMGIiLCJhcHBJZCI6InY4enFqYnpqamUiLCJyZWdpb25zIjpbInNlYTEiXX0=';
+
     recordBtn.onclick = async () => {
       recordedChunks = [];
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -86,21 +88,31 @@
       stopBtn.disabled = true;
     };
 
-    confirmBtn.onclick = () => {
+    confirmBtn.onclick = async () => {
       const blob = new Blob(recordedChunks, { type: "audio/webm" });
-      const audioFileName = prompt("Ingresa el nombre del archivo (sin espacios):", "mi_audio");
-      if (!audioFileName) return;
-      const audioUrl = `https://your-site-name.netlify.app/audios/${audioFileName}.webm`;
+      const file = new File([blob], `audio_${Date.now()}.webm`, { type: "audio/webm" });
 
-      // Mostrar QR
-      qr.set({ value: audioUrl });
-      qrContainer.hidden = false;
+      const formData = new FormData();
+      formData.append("file", file);
 
-      // Descargar el archivo
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${audioFileName}.webm`;
-      a.click();
+      const res = await fetch("https://uploadthing.com/api/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${UPLOADTHING_TOKEN}`
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+      const url = data?.url;
+
+      if (url) {
+        qr.set({ value: url });
+        qrContainer.hidden = false;
+        alert("✅ Audio subido y QR generado correctamente!");
+      } else {
+        alert("❌ Hubo un error subiendo el audio.");
+      }
     };
   </script>
 </body>
