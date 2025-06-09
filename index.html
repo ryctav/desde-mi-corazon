@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Desde mi corazón</title>
   <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
   <style>
@@ -32,6 +32,17 @@
     #qr-container {
       margin-top: 20px;
     }
+    #log {
+      margin-top: 15px;
+      background: #eee;
+      padding: 10px;
+      text-align: left;
+      height: 100px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 14px;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
@@ -48,7 +59,16 @@
     <canvas id="qr"></canvas>
   </div>
 
+  <div id="log"></div>
+
   <script>
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      console.log(msg);
+      logEl.textContent += msg + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
     let mediaRecorder;
     let recordedChunks = [];
     const recordBtn = document.getElementById("recordBtn");
@@ -62,56 +82,81 @@
 
     recordBtn.onclick = async () => {
       recordedChunks = [];
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-      };
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        audioPlayer.src = url;
-        audioPlayer.hidden = false;
-        confirmBtn.hidden = false;
-      };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: "audio/webm" });
+          const url = URL.createObjectURL(blob);
+          audioPlayer.src = url;
+          audioPlayer.hidden = false;
+          confirmBtn.hidden = false;
+          log('Audio grabado listo para confirmar.');
+        };
 
-      mediaRecorder.start();
-      recordBtn.disabled = true;
-      stopBtn.disabled = false;
+        mediaRecorder.start();
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        log('Grabando...');
+      } catch (err) {
+        log('Error al acceder al micrófono: ' + err.message);
+        alert('No se pudo acceder al micrófono.');
+      }
     };
 
     stopBtn.onclick = () => {
       mediaRecorder.stop();
       recordBtn.disabled = false;
       stopBtn.disabled = true;
+      log('Grabación detenida.');
     };
 
     confirmBtn.onclick = async () => {
       const blob = new Blob(recordedChunks, { type: "audio/webm" });
       const file = new File([blob], `audio_${Date.now()}.webm`, { type: "audio/webm" });
-
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("https://uploadthing.com/api/upload", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${UPLOADTHING_TOKEN}`
-        },
-        body: formData
-      });
+      log('Subiendo audio a UploadThing...');
 
-      const data = await res.json();
-      const url = data?.url;
+      try {
+        const res = await fetch("https://uploadthing.com/api/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${UPLOADTHING_TOKEN}`
+          },
+          body: formData
+        });
+        log('Respuesta recibida, procesando...');
 
-      if (url) {
-        qr.set({ value: url });
-        qrContainer.hidden = false;
-        alert("✅ Audio subido y QR generado correctamente!");
-      } else {
-        alert("❌ Hubo un error subiendo el audio.");
+        if (!res.ok) {
+          const text = await res.text();
+          log(`Error HTTP ${res.status}: ${text}`);
+          alert('Error subiendo audio: ' + res.status);
+          return;
+        }
+
+        const data = await res.json();
+        log('Respuesta JSON: ' + JSON.stringify(data));
+
+        const url = data?.url;
+        if (url) {
+          qr.set({ value: url });
+          qrContainer.hidden = false;
+          alert("✅ Audio subido y QR generado correctamente!");
+          log('Audio subido con éxito: ' + url);
+        } else {
+          log('No se encontró URL en la respuesta.');
+          alert('Error: no se recibió URL del audio.');
+        }
+      } catch (error) {
+        log('Error en fetch: ' + error.message);
+        alert('Error subiendo audio: ' + error.message);
       }
     };
   </script>
